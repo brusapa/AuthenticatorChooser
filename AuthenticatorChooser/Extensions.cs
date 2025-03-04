@@ -4,10 +4,6 @@ namespace AuthenticatorChooser;
 
 public static class Extensions {
 
-    public static IEnumerable<AutomationElement> children(this AutomationElement parent) {
-        return parent.FindAll(TreeScope.Children, Condition.TrueCondition).Cast<AutomationElement>();
-    }
-
     /// <summary>Remove null values.</summary>
     /// <returns>Input enumerable with null values removed.</returns>
     public static IEnumerable<T> Compact<T>(this IEnumerable<T?> source) where T: class {

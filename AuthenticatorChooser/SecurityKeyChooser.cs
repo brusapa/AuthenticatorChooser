@@ -1,9 +1,9 @@
 using NLog;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using System.Windows.Input;
-using ThrottleDebounce;
 
 namespace AuthenticatorChooser;
 
@@ -27,26 +27,9 @@ public static class SecurityKeyChooser {
                 return;
             }
 
-            Condition credentialsListIdCondition = new PropertyCondition(AutomationElement.AutomationIdProperty, "CredentialsList");
+            var authenticatorChoices = RetrieveCredentialList(fidoEl, TimeSpan.FromMinutes(1));
+
             IEnumerable<string> securityKeyLabelPossibilities = I18N.getStrings(I18N.Key.SECURITY_KEY);
-
-            Stopwatch authenticatorChoicesStopwatch = Stopwatch.StartNew();
-            ICollection<AutomationElement> authenticatorChoices;
-            try
-            {
-                authenticatorChoices = Retrier.Attempt(_ =>
-                        outerScrollViewer.FindFirst(TreeScope.Children, credentialsListIdCondition).children().ToList(),
-                    maxAttempts: 124,                                                        // #5, #11: ~60 sec
-                    delay: attempt => TimeSpan.FromMilliseconds(1 << Math.Min(attempt, 9))); // #11: power series backoff, max=512 ms
-                LOGGER.Trace("Found authenticator choices after {0:N3} sec", authenticatorChoicesStopwatch.Elapsed.TotalSeconds);
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                LOGGER.Error(e, "Could not find authenticator choices after retrying for {0:N3} sec due to the following exception. Giving up and not automatically selecting Security Key.",
-                    authenticatorChoicesStopwatch.Elapsed.TotalSeconds);
-                return;
-            }
-
             AutomationElement? securityKeyChoice = authenticatorChoices.FirstOrDefault(choice => nameContainsAny(choice, securityKeyLabelPossibilities));
             if (securityKeyChoice == null)
             {
@@ -64,7 +47,8 @@ public static class SecurityKeyChooser {
                 LOGGER.Info("Shift is pressed, not submitting dialog box");
                 return;
             }
-            else if (!authenticatorChoices.All(choice => choice == securityKeyChoice || nameContainsAny(choice, I18N.getStrings(I18N.Key.SMARTPHONE))))
+            
+            if (!authenticatorChoices.All(choice => choice == securityKeyChoice || nameContainsAny(choice, I18N.getStrings(I18N.Key.SMARTPHONE))))
             {
                 nextButton.SetFocus();
                 LOGGER.Info("Dialog box has a choice that is neither pairing a new phone nor USB security key (such as an existing phone, PIN, or biometrics), " +
@@ -74,6 +58,10 @@ public static class SecurityKeyChooser {
 
             ((InvokePattern)nextButton.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
             LOGGER.Info("Next button pressed");
+        }
+        catch (TimeoutException e)
+        {
+            LOGGER.Error(e, e.Message);
         }
         catch (COMException e)
         {
@@ -105,6 +93,31 @@ public static class SecurityKeyChooser {
             1 => propertyConditions[0],
             _ => and ? new AndCondition(propertyConditions) : new OrCondition(propertyConditions)
         };
+    }
+
+    /// <summary>
+    /// Retrieve a enumerable of <see cref="AutomationElement"/> representing the list of authenticator choices in a FIDO prompt.
+    /// </summary>
+    /// <param name="fidoElement">FIDO prompt <see cref="AutomationElement"/></param>
+    /// <param name="timeout">Maximum time to wait for the window to be initialized</param>
+    /// <returns>A enumerable of <see cref="AutomationElement"/> representing the list of authenticator choices in a FIDO prompt.</returns>
+    /// <exception cref="TimeoutException"></exception>
+    private static IEnumerable<AutomationElement> RetrieveCredentialList(AutomationElement fidoElement, TimeSpan timeout)
+    {
+        var authenticatorChoicesStopwatch = Stopwatch.StartNew();
+        while (authenticatorChoicesStopwatch.Elapsed < timeout)
+        {
+            var credentialListElement = fidoElement.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "CredentialsList"));
+            if (credentialListElement != null)
+            {
+                var authenticatorChoices = credentialListElement
+                                            .FindAll(TreeScope.Children, Condition.TrueCondition)
+                                            .Cast<AutomationElement>();
+                return authenticatorChoices;
+            }
+            Thread.Sleep(5);
+        }
+        throw new TimeoutException($"Could not find authenticator choices after retrying for {timeout} due to the following exception. Giving up and not automatically selecting Security Key.");
     }
 
 }

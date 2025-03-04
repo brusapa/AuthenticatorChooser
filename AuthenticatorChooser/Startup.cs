@@ -96,7 +96,7 @@ public class Startup {
     {
         try
         {
-            var element = sender as AutomationElement ?? throw new ElementNotAvailableException("//TODO");
+            var element = sender as AutomationElement ?? throw new ElementNotAvailableException();
             if (SecurityKeyChooser.isFidoPromptWindow(element))
             {
                 SecurityKeyChooser.chooseUsbSecurityKey(element);
@@ -104,7 +104,7 @@ public class Startup {
         }
         catch (ElementNotAvailableException)
         {
-            // TODO: Log here error
+            logger?.Error("Received a WindowOpened event for an element that is no longer available");
         }
     }   
 

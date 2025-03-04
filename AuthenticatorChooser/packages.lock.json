@@ -26,12 +26,6 @@
           "System.CodeDom": "9.0.1"
         }
       },
-      "ThrottleDebounce": {
-        "type": "Direct",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "/lt2PLUjE1bXCkPDVXXhZDzqaK3SmKwJ2EOq/a6ZbsgAWnRz3TqkqU0VyUncbh8bUIJQHCoPUxbwmjWeAbeIbw=="
-      },
       "Workshell.PE.Resources": {
         "type": "Direct",
         "requested": "[4.0.0.147, )",
