@@ -1,4 +1,3 @@
-using ManagedWinapi.Windows;
 using NLog;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -12,78 +11,78 @@ public static class SecurityKeyChooser {
 
     // #4: unfortunately, this class name is shared with the UAC prompt, detectable when desktop dimming is disabled
     private const string WINDOW_CLASS_NAME  = "Credential Dialog Xaml Host";
-    private const string ALT_TAB_CLASS_NAME = "XamlExplorerHostIslandWindow";
 
     private static readonly Logger LOGGER = LogManager.GetCurrentClassLogger();
 
-    public static void chooseUsbSecurityKey(SystemWindow fidoPrompt) {
-        try {
-            if (!isFidoPromptWindow(fidoPrompt)) {
-                LOGGER.Trace("Window 0x{hwnd:x} is not a Windows Security window", fidoPrompt.HWnd);
-                return;
-            }
-
-            if (SystemWindow.ForegroundWindow.ClassName == ALT_TAB_CLASS_NAME) { // #8
-                LOGGER.Debug("Alt+Tab is being held, not interacting with Windows Security window");
-                return;
-            }
-
-            AutomationElement  fidoEl            = fidoPrompt.toAutomationElement();
+    public static void chooseUsbSecurityKey(AutomationElement fidoEl)
+    {
+        try
+        {
             AutomationElement? outerScrollViewer = fidoEl.FindFirst(TreeScope.Children, new PropertyCondition(AutomationElement.ClassNameProperty, "ScrollViewer"));
             if (outerScrollViewer?.FindFirst(TreeScope.Children, new AndCondition(
                     new PropertyCondition(AutomationElement.ClassNameProperty, "TextBlock"),
-                    singletonSafePropertyCondition(AutomationElement.NameProperty, false, I18N.getStrings(I18N.Key.SIGN_IN_WITH_YOUR_PASSKEY)))) == null) { // #4
+                    singletonSafePropertyCondition(AutomationElement.NameProperty, false, I18N.getStrings(I18N.Key.SIGN_IN_WITH_YOUR_PASSKEY)))) == null)
+            { // #4
                 LOGGER.Debug("Window is not a passkey choice prompt");
                 return;
             }
 
-            Condition           credentialsListIdCondition    = new PropertyCondition(AutomationElement.AutomationIdProperty, "CredentialsList");
+            Condition credentialsListIdCondition = new PropertyCondition(AutomationElement.AutomationIdProperty, "CredentialsList");
             IEnumerable<string> securityKeyLabelPossibilities = I18N.getStrings(I18N.Key.SECURITY_KEY);
 
-            Stopwatch                      authenticatorChoicesStopwatch = Stopwatch.StartNew();
+            Stopwatch authenticatorChoicesStopwatch = Stopwatch.StartNew();
             ICollection<AutomationElement> authenticatorChoices;
-            try {
+            try
+            {
                 authenticatorChoices = Retrier.Attempt(_ =>
                         outerScrollViewer.FindFirst(TreeScope.Children, credentialsListIdCondition).children().ToList(),
                     maxAttempts: 124,                                                        // #5, #11: ~60 sec
                     delay: attempt => TimeSpan.FromMilliseconds(1 << Math.Min(attempt, 9))); // #11: power series backoff, max=512 ms
                 LOGGER.Trace("Found authenticator choices after {0:N3} sec", authenticatorChoicesStopwatch.Elapsed.TotalSeconds);
-            } catch (Exception e) when (e is not OutOfMemoryException) {
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
                 LOGGER.Error(e, "Could not find authenticator choices after retrying for {0:N3} sec due to the following exception. Giving up and not automatically selecting Security Key.",
                     authenticatorChoicesStopwatch.Elapsed.TotalSeconds);
                 return;
             }
 
             AutomationElement? securityKeyChoice = authenticatorChoices.FirstOrDefault(choice => nameContainsAny(choice, securityKeyLabelPossibilities));
-            if (securityKeyChoice == null) {
+            if (securityKeyChoice == null)
+            {
                 LOGGER.Debug("USB security key is not a choice, skipping");
                 return;
             }
 
-            ((SelectionItemPattern) securityKeyChoice.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            ((SelectionItemPattern)securityKeyChoice.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             LOGGER.Info("USB security key selected");
 
             AutomationElement nextButton = fidoEl.FindFirst(TreeScope.Children, new PropertyCondition(AutomationElement.AutomationIdProperty, "OkButton"))!;
-            if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift)) {
+            if (KeyboardHelper.IsShiftPressed())
+            {
                 nextButton.SetFocus();
                 LOGGER.Info("Shift is pressed, not submitting dialog box");
                 return;
-            } else if (!authenticatorChoices.All(choice => choice == securityKeyChoice || nameContainsAny(choice, I18N.getStrings(I18N.Key.SMARTPHONE)))) {
+            }
+            else if (!authenticatorChoices.All(choice => choice == securityKeyChoice || nameContainsAny(choice, I18N.getStrings(I18N.Key.SMARTPHONE))))
+            {
                 nextButton.SetFocus();
                 LOGGER.Info("Dialog box has a choice that is neither pairing a new phone nor USB security key (such as an existing phone, PIN, or biometrics), " +
                     "skipping because the user might want to choose it");
                 return;
             }
 
-            ((InvokePattern) nextButton.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+            ((InvokePattern)nextButton.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
             LOGGER.Info("Next button pressed");
-        } catch (COMException e) {
+        }
+        catch (COMException e)
+        {
             LOGGER.Warn(e, "UI Automation error while selecting security key, skipping this dialog box instance");
         }
     }
 
     // Window name and title are localized, so don't match against those
-    public static bool isFidoPromptWindow(SystemWindow window) => window.ClassName == WINDOW_CLASS_NAME;
+    public static bool isFidoPromptWindow(AutomationElement element) => element.Current.ClassName == WINDOW_CLASS_NAME;
 
     private static bool nameContainsAny(AutomationElement element, IEnumerable<string?> possibleSubstrings) {
         string name = element.Current.Name;

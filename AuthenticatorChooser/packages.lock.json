@@ -11,15 +11,6 @@
           "System.ComponentModel.Annotations": "5.0.0"
         }
       },
-      "mwinapi": {
-        "type": "Direct",
-        "requested": "[0.3.0.5, )",
-        "resolved": "0.3.0.5",
-        "contentHash": "jb1ox29TMcxe0klNF5yui+ehXHUdEZOuykYaoGI9Okt0s7K5bNWxOzqsng0VVVvvFnW9wNfS4hWYOsE9Xup0GQ==",
-        "dependencies": {
-          "System.Management": "6.0.0"
-        }
-      },
       "NLog": {
         "type": "Direct",
         "requested": "[5.4.0, )",

@@ -1,12 +1,11 @@
-﻿using AuthenticatorChooser.WindowOpening;
-using ManagedWinapi.Windows;
-using McMaster.Extensions.CommandLineUtils;
+﻿using McMaster.Extensions.CommandLineUtils;
 using McMaster.Extensions.CommandLineUtils.Conventions;
 using Microsoft.Win32;
 using NLog;
 using System.Management;
 using System.Reflection;
 using System.Security.Principal;
+using System.Windows.Automation;
 using System.Windows.Forms;
 
 // ReSharper disable ClassNeverInstantiated.Global - it's actually instantiated by McMaster.Extensions.CommandLineUtils
@@ -62,12 +61,12 @@ public class Startup {
                     logger.Info("Operating system is {name} {marketingVersion} {version} {arch}", os.name, os.marketingVersion, os.version, os.arch);
                     logger.Info("Locales are {userLocale} (user) and {systemLocale} (system)", I18N.userLocaleName, I18N.systemLocaleName);
 
-                    using WindowOpeningListener windowOpeningListener = new WindowOpeningListenerImpl();
-                    windowOpeningListener.windowOpened += (_, window) => SecurityKeyChooser.chooseUsbSecurityKey(window);
-
-                    foreach (SystemWindow fidoPromptWindow in SystemWindow.FilterToplevelWindows(SecurityKeyChooser.isFidoPromptWindow)) {
-                        SecurityKeyChooser.chooseUsbSecurityKey(fidoPromptWindow);
-                    }
+                    // Suscribe to WindowOpened event
+                    Automation.AddAutomationEventHandler(
+                        eventId: WindowPattern.WindowOpenedEvent,
+                        element: AutomationElement.RootElement,
+                        scope: TreeScope.Descendants,
+                        eventHandler: OnWindowOpened);
 
                     _ = I18N.getStrings(I18N.Key.SMARTPHONE); // ensure localization is loaded eagerly
 
@@ -92,6 +91,22 @@ public class Startup {
             LogManager.Shutdown();
         }
     }
+
+    private static void OnWindowOpened(object sender, AutomationEventArgs e)
+    {
+        try
+        {
+            var element = sender as AutomationElement ?? throw new ElementNotAvailableException("//TODO");
+            if (SecurityKeyChooser.isFidoPromptWindow(element))
+            {
+                SecurityKeyChooser.chooseUsbSecurityKey(element);
+            }
+        }
+        catch (ElementNotAvailableException)
+        {
+            // TODO: Log here error
+        }
+    }   
 
     private static void showUsage() {
         string processFilename = Path.GetFileName(Environment.ProcessPath)!;
