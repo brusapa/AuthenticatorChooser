@@ -50,7 +50,12 @@ public class Startup {
                 Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run", PROGRAM_NAME, $"\"{Environment.ProcessPath}\"");
             } else {
                 using Mutex singleInstanceLock = new(true, $@"Local\{PROGRAM_NAME}_{WindowsIdentity.GetCurrent().User?.Value}", out bool isOnlyInstance);
-                if (!isOnlyInstance) return 2;
+                if (!isOnlyInstance)
+                {
+                    logger.Error("Another instance of {name} is already running", PROGRAM_NAME);
+                    MessageBox.Show($"Another instance of {PROGRAM_NAME} is already running", PROGRAM_NAME, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return 2;
+                }
                 try {
                     logger.Info("{name} {version} starting", PROGRAM_NAME, PROGRAM_VERSION);
                     (string name, string marketingVersion, Version version, string arch) os = getOsVersion();
